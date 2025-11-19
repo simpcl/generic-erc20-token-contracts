@@ -8,20 +8,21 @@ async function main() {
   console.log("Deploying contracts with account:", deployer.address);
 
   // Check account balance
-  const balance = await deployer.getBalance();
-  console.log("Account balance:", ethers.utils.formatEther(balance), "ETH");
+  const provider = ethers.provider;
+  const balance = await provider.getBalance(deployer.address);
+  console.log("Account balance:", ethers.formatEther(balance), "ETH");
 
   // Configuration
   const TOKEN_NAME = process.env.TOKEN_NAME || "GenericToken";
   const TOKEN_SYMBOL = process.env.TOKEN_SYMBOL || "MYGT";
   const INITIAL_SUPPLY = process.env.INITIAL_SUPPLY
-    ? ethers.utils.parseUnits(process.env.INITIAL_SUPPLY, 18)
-    : ethers.utils.parseUnits("1000000", 18); // 1 million tokens default
+    ? ethers.parseUnits(process.env.INITIAL_SUPPLY, 18)
+    : ethers.parseUnits("1000000", 18); // 1 million tokens default
 
   console.log("Token Configuration:");
   console.log("  Name:", TOKEN_NAME);
   console.log("  Symbol:", TOKEN_SYMBOL);
-  console.log("  Initial Supply:", ethers.utils.formatUnits(INITIAL_SUPPLY, 18), "tokens");
+  console.log("  Initial Supply:", ethers.formatUnits(INITIAL_SUPPLY, 18), "tokens");
 
   try {
     // Deploy the token
@@ -34,11 +35,12 @@ async function main() {
     );
 
     console.log("⏳ Waiting for deployment confirmation...");
-    await token.deployed();
+    const deploymentTx = token.deploymentTransaction();
+    const deploymentReceipt = await deploymentTx.wait();
 
     console.log("GenericToken deployed successfully!");
-    console.log("Contract address:", token.address);
-    console.log("Transaction hash:", token.deployTransaction.hash);
+    console.log("Contract address:", await token.getAddress());
+    console.log("Transaction hash:", deploymentTx.hash);
 
     // Verify deployment by reading token info
     console.log("\nVerifying deployment...");
@@ -52,8 +54,8 @@ async function main() {
     console.log("Token Information:");
     console.log("  Name:", name);
     console.log("  Symbol:", symbol);
-    console.log("  Total Supply:", ethers.utils.formatUnits(totalSupply, 18), "tokens");
-    console.log("  Max Supply:", ethers.utils.formatUnits(maxSupply, 18), "tokens");
+    console.log("  Total Supply:", ethers.formatUnits(totalSupply, 18), "tokens");
+    console.log("  Max Supply:", ethers.formatUnits(maxSupply, 18), "tokens");
     console.log("  Owner:", owner);
     console.log("  Owner is Minter:", isOwnerMinter);
 
@@ -66,17 +68,17 @@ async function main() {
 
     // Save deployment info to a file
     const deploymentInfo = {
-      network: hre.network.name,
-      tokenAddress: token.address,
+      network: "private",
+      tokenAddress: await token.getAddress(),
       deployerAddress: deployer.address,
       tokenName: name,
       tokenSymbol: symbol,
-      initialSupply: ethers.utils.formatUnits(INITIAL_SUPPLY, 18),
-      totalSupply: ethers.utils.formatUnits(totalSupply, 18),
-      maxSupply: ethers.utils.formatUnits(maxSupply, 18),
+      initialSupply: ethers.formatUnits(INITIAL_SUPPLY, 18),
+      totalSupply: ethers.formatUnits(totalSupply, 18),
+      maxSupply: ethers.formatUnits(maxSupply, 18),
       owner: owner,
-      deploymentTransaction: token.deployTransaction.hash,
-      deploymentBlock: token.deployTransaction.blockNumber,
+      deploymentTransaction: deploymentTx.hash,
+      deploymentBlock: deploymentReceipt.blockNumber,
       deployedAt: new Date().toISOString()
     };
 
@@ -87,7 +89,7 @@ async function main() {
 
     // Environment variables for frontend integration
     console.log("\nEnvironment variables for frontend:");
-    console.log(`NEXT_PUBLIC_TOKEN_ADDRESS=${token.address}`);
+    console.log(`NEXT_PUBLIC_TOKEN_ADDRESS=${await token.getAddress()}`);
     console.log(`NEXT_PUBLIC_TOKEN_NAME=${name}`);
     console.log(`NEXT_PUBLIC_TOKEN_SYMBOL=${symbol}`);
     console.log(`NEXT_PUBLIC_TOKEN_DECIMALS=18`);

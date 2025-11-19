@@ -2,7 +2,7 @@
   "name": "erc20-token-with-eip2612-contracts",
   "version": "1.0.0",
   "main": "index.js",
-    "scripts": {
+  "scripts": {
     "compile": "hardhat compile",
     "test": "hardhat test",
     "test:coverage": "REPORT_GAS=true hardhat coverage",
@@ -21,6 +21,7 @@
   "dependencies": {
     "@openzeppelin/contracts": "^5.4.0",
     "@typechain/hardhat": "^9.1.0",
+    "dotenv": "^17.2.3",
     "hardhat-gas-reporter": "^2.3.0",
     "solidity-coverage": "^0.8.16"
   }
