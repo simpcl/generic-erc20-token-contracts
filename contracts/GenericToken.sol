@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Permit.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Burnable.sol";
 import "@openzeppelin/contracts/token/ERC20/extensions/ERC20Pausable.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 /**
  * @title GenericToken
@@ -57,6 +58,25 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
     event EmergencyAction(address indexed by, string action);
 
     // ============ State Variables ============
+
+    // EIP-3009 authorization states
+    enum AuthorizationState { Unused, Used, Canceled }
+    mapping(address => mapping(bytes32 => uint8)) private _authorizationStates;
+
+    // EIP-3009 EIP-712 typehashes
+    bytes32 private constant TRANSFER_WITH_AUTHORIZATION_TYPEHASH = keccak256(
+        "TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
+    );
+    bytes32 private constant RECEIVE_WITH_AUTHORIZATION_TYPEHASH = keccak256(
+        "ReceiveWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
+    );
+    bytes32 private constant CANCEL_AUTHORIZATION_TYPEHASH = keccak256(
+        "CancelAuthorization(address authorizer,bytes32 nonce)"
+    );
+
+    // EIP-3009 events
+    event AuthorizationUsed(address indexed authorizer, bytes32 indexed nonce);
+    event AuthorizationCanceled(address indexed authorizer, bytes32 indexed nonce);
 
     /**
      * @dev Mapping of addresses that have minting privileges
@@ -159,6 +179,121 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
     }
 
     // ============ External Functions ============
+
+    /**
+     * @dev EIP-3009: Transfer tokens with signed authorization.
+     */
+    function transferWithAuthorization(
+        address from,
+        address to,
+        uint256 value,
+        uint256 validAfter,
+        uint256 validBefore,
+        bytes32 nonce,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external notEmergencyMode {
+        require(!_blacklisted[from] && !_blacklisted[to], "GenericToken: Blacklisted address");
+        require(block.timestamp > validAfter, "GenericToken: Authorization not yet valid");
+        require(block.timestamp < validBefore, "GenericToken: Authorization expired");
+        require(_authorizationStates[from][nonce] == uint8(AuthorizationState.Unused), "GenericToken: Authorization used or canceled");
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                TRANSFER_WITH_AUTHORIZATION_TYPEHASH,
+                from,
+                to,
+                value,
+                validAfter,
+                validBefore,
+                nonce
+            )
+        );
+
+        address signer = ECDSA.recover(_hashTypedDataV4(structHash), v, r, s);
+        require(signer == from, "GenericToken: Invalid signature");
+
+        _authorizationStates[from][nonce] = uint8(AuthorizationState.Used);
+        emit AuthorizationUsed(from, nonce);
+
+        _transfer(from, to, value);
+    }
+
+    /**
+     * @dev EIP-3009: Receive tokens with signed authorization. Caller must be the recipient.
+     */
+    function receiveWithAuthorization(
+        address from,
+        address to,
+        uint256 value,
+        uint256 validAfter,
+        uint256 validBefore,
+        bytes32 nonce,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external notEmergencyMode {
+        require(msg.sender == to, "GenericToken: Caller must be recipient");
+        require(!_blacklisted[from] && !_blacklisted[to], "GenericToken: Blacklisted address");
+        require(block.timestamp > validAfter, "GenericToken: Authorization not yet valid");
+        require(block.timestamp < validBefore, "GenericToken: Authorization expired");
+        require(_authorizationStates[from][nonce] == uint8(AuthorizationState.Unused), "GenericToken: Authorization used or canceled");
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                RECEIVE_WITH_AUTHORIZATION_TYPEHASH,
+                from,
+                to,
+                value,
+                validAfter,
+                validBefore,
+                nonce
+            )
+        );
+
+        address signer = ECDSA.recover(_hashTypedDataV4(structHash), v, r, s);
+        require(signer == from, "GenericToken: Invalid signature");
+
+        _authorizationStates[from][nonce] = uint8(AuthorizationState.Used);
+        emit AuthorizationUsed(from, nonce);
+
+        _transfer(from, to, value);
+    }
+
+    /**
+     * @dev EIP-3009: Cancel a signed authorization that has not been used yet.
+     */
+    function cancelAuthorization(
+        address authorizer,
+        bytes32 nonce,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external notEmergencyMode {
+        require(_authorizationStates[authorizer][nonce] == uint8(AuthorizationState.Unused), "GenericToken: Authorization used or canceled");
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                CANCEL_AUTHORIZATION_TYPEHASH,
+                authorizer,
+                nonce
+            )
+        );
+
+        address signer = ECDSA.recover(_hashTypedDataV4(structHash), v, r, s);
+        require(signer == authorizer, "GenericToken: Invalid signature");
+
+        _authorizationStates[authorizer][nonce] = uint8(AuthorizationState.Canceled);
+        emit AuthorizationCanceled(authorizer, nonce);
+    }
+
+    /**
+     * @dev View authorization state for an (authorizer, nonce).
+     */
+    function authorizationState(address authorizer, bytes32 nonce) external view returns (uint8) {
+        return _authorizationStates[authorizer][nonce];
+    }
 
     /**
      * @dev Mints new tokens to the specified address
