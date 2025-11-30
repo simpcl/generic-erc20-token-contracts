@@ -115,7 +115,7 @@ Interactive script for token management:
 
 The project includes comprehensive test suites:
 
-### Main Tests (ProductionToken.test.js)
+### Main Tests (GenericToken.test.js)
 - Basic ERC20 functionality
 - EIP-2612 permit operations
 - Minting and burning

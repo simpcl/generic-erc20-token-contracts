@@ -1,5 +1,5 @@
 {
-  "name": "erc20-token-with-eip2612-contracts",
+  "name": "generic-erc20-token-contracts",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
