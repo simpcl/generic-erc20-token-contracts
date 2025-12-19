@@ -16,10 +16,10 @@ export default {
       chainId: 985
     },
     bsctest: {
-      url: "https://data-seed-prebsc-1-s1.binance.org:8545",
+      url: "https://data-seed-prebsc-1-s1.bnbchain.org:8545",
       accounts: [process.env.PRIVATE_KEY],
       chainId: 97,
-      gasPrice: 20000000000
+      gasPrice: 2000000000
     },
   },
 
