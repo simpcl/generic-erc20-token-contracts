@@ -23,8 +23,13 @@ import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
  * - Emergency controls
  * - Comprehensive events for monitoring
  */
-contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownable {
-
+contract GenericToken is
+    ERC20,
+    ERC20Permit,
+    ERC20Burnable,
+    ERC20Pausable,
+    Ownable
+{
     // ============ Events ============
 
     /**
@@ -60,23 +65,31 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
     // ============ State Variables ============
 
     // EIP-3009 authorization states
-    enum AuthorizationState { Unused, Used, Canceled }
+    enum AuthorizationState {
+        Unused,
+        Used,
+        Canceled
+    }
     mapping(address => mapping(bytes32 => uint8)) private _authorizationStates;
 
     // EIP-3009 EIP-712 typehashes
-    bytes32 private constant TRANSFER_WITH_AUTHORIZATION_TYPEHASH = keccak256(
-        "TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
-    );
-    bytes32 private constant RECEIVE_WITH_AUTHORIZATION_TYPEHASH = keccak256(
-        "ReceiveWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
-    );
-    bytes32 private constant CANCEL_AUTHORIZATION_TYPEHASH = keccak256(
-        "CancelAuthorization(address authorizer,bytes32 nonce)"
-    );
+    bytes32 private constant TRANSFER_WITH_AUTHORIZATION_TYPEHASH =
+        keccak256(
+            "TransferWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
+        );
+    bytes32 private constant RECEIVE_WITH_AUTHORIZATION_TYPEHASH =
+        keccak256(
+            "ReceiveWithAuthorization(address from,address to,uint256 value,uint256 validAfter,uint256 validBefore,bytes32 nonce)"
+        );
+    bytes32 private constant CANCEL_AUTHORIZATION_TYPEHASH =
+        keccak256("CancelAuthorization(address authorizer,bytes32 nonce)");
 
     // EIP-3009 events
     event AuthorizationUsed(address indexed authorizer, bytes32 indexed nonce);
-    event AuthorizationCanceled(address indexed authorizer, bytes32 indexed nonce);
+    event AuthorizationCanceled(
+        address indexed authorizer,
+        bytes32 indexed nonce
+    );
 
     /**
      * @dev Mapping of addresses that have minting privileges
@@ -84,14 +97,19 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
     mapping(address => bool) private _minters;
 
     /**
-     * @dev Maximum supply cap (18 million tokens with 18 decimals)
+     * @dev Custom decimals for the token
      */
-    uint256 public constant MAX_SUPPLY = 18_000_000 * 10**18;
+    uint8 private immutable _decimals;
 
     /**
-     * @dev Daily minting limit to prevent spam attacks
+     * @dev Maximum supply cap (in smallest units)
      */
-    uint256 public constant DAILY_MINT_LIMIT = 1_000_000 * 10**18;
+    uint256 public immutable MAX_SUPPLY;
+
+    /**
+     * @dev Daily minting limit to prevent spam attacks (in smallest units)
+     */
+    uint256 public immutable DAILY_MINT_LIMIT;
 
     /**
      * @dev Tracking of daily minted amounts
@@ -114,7 +132,10 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
      * @dev Restricts function to minters only
      */
     modifier onlyMinter() {
-        require(_minters[msg.sender] || msg.sender == owner(), "GenericToken: Caller is not a minter");
+        require(
+            _minters[msg.sender] || msg.sender == owner(),
+            "GenericToken: Caller is not a minter"
+        );
         _;
     }
 
@@ -122,7 +143,10 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
      * @dev Prevents blacklisted addresses from executing functions
      */
     modifier notBlacklisted() {
-        require(!_blacklisted[msg.sender], "GenericToken: Caller is blacklisted");
+        require(
+            !_blacklisted[msg.sender],
+            "GenericToken: Caller is blacklisted"
+        );
         _;
     }
 
@@ -140,7 +164,10 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
     modifier respectsDailyLimit(uint256 amount) {
         uint256 today = block.timestamp / 1 days;
         uint256 dailyTotal = _dailyMinted[today] + amount;
-        require(dailyTotal <= DAILY_MINT_LIMIT, "GenericToken: Daily mint limit exceeded");
+        require(
+            dailyTotal <= DAILY_MINT_LIMIT,
+            "GenericToken: Daily mint limit exceeded"
+        );
         _;
         _dailyMinted[today] = dailyTotal;
     }
@@ -156,17 +183,39 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
     // ============ Constructor ============
 
     /**
-     * @dev Initializes the token with name, symbol, and initial supply
+     * @dev Initializes the token with name, symbol, decimals, initial supply, max supply, and daily mint limit
      * @param name The token name
      * @param symbol The token symbol
-     * @param initialSupply Initial tokens to mint for the owner
+     * @param decimals_ The number of decimals (e.g., 18 for standard, 6 for stablecoins)
+     * @param initialSupply Initial tokens to mint for the owner (in smallest units)
+     * @param maxSupply_ Maximum supply cap (in smallest units)
+     * @param dailyMintLimit_ Daily minting limit (in smallest units)
      */
     constructor(
         string memory name,
         string memory symbol,
-        uint256 initialSupply
+        uint8 decimals_,
+        uint256 initialSupply,
+        uint256 maxSupply_,
+        uint256 dailyMintLimit_
     ) ERC20(name, symbol) ERC20Permit(name) Ownable(msg.sender) {
-        require(initialSupply <= MAX_SUPPLY, "GenericToken: Initial supply exceeds max supply");
+        require(decimals_ <= 18, "GenericToken: Decimals cannot exceed 18");
+        require(
+            maxSupply_ > 0,
+            "GenericToken: Max supply must be greater than 0"
+        );
+        require(
+            dailyMintLimit_ > 0,
+            "GenericToken: Daily mint limit must be greater than 0"
+        );
+        require(
+            initialSupply <= maxSupply_,
+            "GenericToken: Initial supply exceeds max supply"
+        );
+
+        _decimals = decimals_;
+        MAX_SUPPLY = maxSupply_;
+        DAILY_MINT_LIMIT = dailyMintLimit_;
 
         if (initialSupply > 0) {
             _mint(msg.sender, initialSupply);
@@ -194,10 +243,23 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
         bytes32 r,
         bytes32 s
     ) external notEmergencyMode {
-        require(!_blacklisted[from] && !_blacklisted[to], "GenericToken: Blacklisted address");
-        require(block.timestamp > validAfter, "GenericToken: Authorization not yet valid");
-        require(block.timestamp < validBefore, "GenericToken: Authorization expired");
-        require(_authorizationStates[from][nonce] == uint8(AuthorizationState.Unused), "GenericToken: Authorization used or canceled");
+        require(
+            !_blacklisted[from] && !_blacklisted[to],
+            "GenericToken: Blacklisted address"
+        );
+        require(
+            block.timestamp > validAfter,
+            "GenericToken: Authorization not yet valid"
+        );
+        require(
+            block.timestamp < validBefore,
+            "GenericToken: Authorization expired"
+        );
+        require(
+            _authorizationStates[from][nonce] ==
+                uint8(AuthorizationState.Unused),
+            "GenericToken: Authorization used or canceled"
+        );
 
         bytes32 structHash = keccak256(
             abi.encode(
@@ -235,10 +297,23 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
         bytes32 s
     ) external notEmergencyMode {
         require(msg.sender == to, "GenericToken: Caller must be recipient");
-        require(!_blacklisted[from] && !_blacklisted[to], "GenericToken: Blacklisted address");
-        require(block.timestamp > validAfter, "GenericToken: Authorization not yet valid");
-        require(block.timestamp < validBefore, "GenericToken: Authorization expired");
-        require(_authorizationStates[from][nonce] == uint8(AuthorizationState.Unused), "GenericToken: Authorization used or canceled");
+        require(
+            !_blacklisted[from] && !_blacklisted[to],
+            "GenericToken: Blacklisted address"
+        );
+        require(
+            block.timestamp > validAfter,
+            "GenericToken: Authorization not yet valid"
+        );
+        require(
+            block.timestamp < validBefore,
+            "GenericToken: Authorization expired"
+        );
+        require(
+            _authorizationStates[from][nonce] ==
+                uint8(AuthorizationState.Unused),
+            "GenericToken: Authorization used or canceled"
+        );
 
         bytes32 structHash = keccak256(
             abi.encode(
@@ -271,27 +346,32 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
         bytes32 r,
         bytes32 s
     ) external notEmergencyMode {
-        require(_authorizationStates[authorizer][nonce] == uint8(AuthorizationState.Unused), "GenericToken: Authorization used or canceled");
+        require(
+            _authorizationStates[authorizer][nonce] ==
+                uint8(AuthorizationState.Unused),
+            "GenericToken: Authorization used or canceled"
+        );
 
         bytes32 structHash = keccak256(
-            abi.encode(
-                CANCEL_AUTHORIZATION_TYPEHASH,
-                authorizer,
-                nonce
-            )
+            abi.encode(CANCEL_AUTHORIZATION_TYPEHASH, authorizer, nonce)
         );
 
         address signer = ECDSA.recover(_hashTypedDataV4(structHash), v, r, s);
         require(signer == authorizer, "GenericToken: Invalid signature");
 
-        _authorizationStates[authorizer][nonce] = uint8(AuthorizationState.Canceled);
+        _authorizationStates[authorizer][nonce] = uint8(
+            AuthorizationState.Canceled
+        );
         emit AuthorizationCanceled(authorizer, nonce);
     }
 
     /**
      * @dev View authorization state for an (authorizer, nonce).
      */
-    function authorizationState(address authorizer, bytes32 nonce) external view returns (uint8) {
+    function authorizationState(
+        address authorizer,
+        bytes32 nonce
+    ) external view returns (uint8) {
         return _authorizationStates[authorizer][nonce];
     }
 
@@ -312,7 +392,10 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
         notEmergencyMode
     {
         require(to != address(0), "GenericToken: Cannot mint to zero address");
-        require(totalSupply() + amount <= MAX_SUPPLY, "GenericToken: Max supply exceeded");
+        require(
+            totalSupply() + amount <= MAX_SUPPLY,
+            "GenericToken: Max supply exceeded"
+        );
 
         _mint(to, amount);
         emit TokensMinted(to, amount);
@@ -322,12 +405,9 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
      * @dev Burns tokens from the caller's account
      * @param amount The amount of tokens to burn
      */
-    function burn(uint256 amount)
-        public
-        override
-        notBlacklisted
-        notEmergencyMode
-    {
+    function burn(
+        uint256 amount
+    ) public override notBlacklisted notEmergencyMode {
         super.burn(amount);
     }
 
@@ -336,12 +416,10 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
      * @param account The account to burn from
      * @param amount The amount of tokens to burn
      */
-    function burnFrom(address account, uint256 amount)
-        public
-        override
-        notBlacklisted
-        notEmergencyMode
-    {
+    function burnFrom(
+        address account,
+        uint256 amount
+    ) public override notBlacklisted notEmergencyMode {
         super.burnFrom(account, amount);
     }
 
@@ -351,7 +429,10 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
      * @param amount The amount to transfer
      * @return bool True if successful
      */
-    function transfer(address to, uint256 amount)
+    function transfer(
+        address to,
+        uint256 amount
+    )
         public
         override
         notBlacklisted
@@ -369,7 +450,11 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
      * @param amount The amount to transfer
      * @return bool True if successful
      */
-    function transferFrom(address from, address to, uint256 amount)
+    function transferFrom(
+        address from,
+        address to,
+        uint256 amount
+    )
         public
         override
         notBlacklisted
@@ -386,13 +471,10 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
      * @param amount The amount to approve
      * @return bool True if successful
      */
-    function approve(address spender, uint256 amount)
-        public
-        override
-        notBlacklisted
-        notEmergencyMode
-        returns (bool)
-    {
+    function approve(
+        address spender,
+        uint256 amount
+    ) public override notBlacklisted notEmergencyMode returns (bool) {
         return super.approve(spender, amount);
     }
 
@@ -414,11 +496,7 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
         uint8 v,
         bytes32 r,
         bytes32 s
-    )
-        public
-        override
-        notEmergencyMode
-    {
+    ) public override notEmergencyMode {
         super.permit(owner, spender, value, deadline, v, r, s);
     }
 
@@ -443,7 +521,10 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
      * @param minter The address to add as minter
      */
     function addMinter(address minter) external onlyOwner {
-        require(minter != address(0), "GenericToken: Cannot add zero address as minter");
+        require(
+            minter != address(0),
+            "GenericToken: Cannot add zero address as minter"
+        );
         require(!_minters[minter], "GenericToken: Address is already a minter");
 
         _minters[minter] = true;
@@ -456,7 +537,10 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
      */
     function removeMinter(address minter) external onlyOwner {
         require(_minters[minter], "GenericToken: Address is not a minter");
-        require(minter != owner(), "GenericToken: Cannot remove owner as minter");
+        require(
+            minter != owner(),
+            "GenericToken: Cannot remove owner as minter"
+        );
 
         _minters[minter] = false;
         emit MinterRemoved(minter);
@@ -467,7 +551,10 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
      * @param account The address to blacklist
      */
     function blacklist(address account) external onlyOwner {
-        require(account != address(0), "GenericToken: Cannot blacklist zero address");
+        require(
+            account != address(0),
+            "GenericToken: Cannot blacklist zero address"
+        );
         require(account != owner(), "GenericToken: Cannot blacklist owner");
 
         _blacklisted[account] = true;
@@ -512,7 +599,10 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
         uint256 amount
     ) external onlyOwner {
         require(_emergencyMode, "GenericToken: Not in emergency mode");
-        require(to != address(0), "GenericToken: Cannot transfer to zero address");
+        require(
+            to != address(0),
+            "GenericToken: Cannot transfer to zero address"
+        );
 
         _transfer(from, to, amount);
         emit EmergencyAction(msg.sender, "EMERGENCY_TRANSFER");
@@ -565,23 +655,31 @@ contract GenericToken is ERC20, ERC20Permit, ERC20Burnable, ERC20Pausable, Ownab
     }
 
     /**
+     * @dev Returns the number of decimals used to get its user representation
+     * @return uint8 The number of decimals
+     */
+    function decimals() public view override returns (uint8) {
+        return _decimals;
+    }
+
+    /**
      * @dev Gets the maximum supply
      * @return uint256 Maximum supply
      */
-    function maxSupply() external pure returns (uint256) {
+    function maxSupply() external view returns (uint256) {
         return MAX_SUPPLY;
     }
 
     // ============ Internal Functions ============
 
-    
     /**
      * @dev Override the _update function to resolve conflict between ERC20 and ERC20Pausable
      */
-    function _update(address from, address to, uint256 amount)
-        internal
-        override(ERC20, ERC20Pausable)
-    {
+    function _update(
+        address from,
+        address to,
+        uint256 amount
+    ) internal override(ERC20, ERC20Pausable) {
         super._update(from, to, amount);
     }
 

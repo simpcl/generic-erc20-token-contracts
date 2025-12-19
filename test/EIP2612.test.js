@@ -7,7 +7,11 @@ describe("EIP-2612 Comprehensive Testing", function () {
   let owner, spender, recipient, attacker;
   let domain, types;
 
-  const PERMIT_AMOUNT = ethers.parseUnits("1000", 18);
+  const TOKEN_DECIMALS = 18;
+  const PERMIT_AMOUNT = ethers.parseUnits("1000", TOKEN_DECIMALS);
+  const INITIAL_SUPPLY = ethers.parseUnits("1000000", TOKEN_DECIMALS);
+  const MAX_SUPPLY = ethers.parseUnits("18000000", TOKEN_DECIMALS);
+  const DAILY_MINT_LIMIT = ethers.parseUnits("1000000", TOKEN_DECIMALS);
 
   beforeEach(async function () {
     [owner, spender, recipient, attacker] = await ethers.getSigners();
@@ -16,7 +20,10 @@ describe("EIP-2612 Comprehensive Testing", function () {
     token = await GenericToken.deploy(
       "GenericTestToken",
       "TEST",
-      ethers.parseUnits("1000000", 18)
+      TOKEN_DECIMALS,
+      INITIAL_SUPPLY,
+      MAX_SUPPLY,
+      DAILY_MINT_LIMIT
     );
 
     // Setup EIP-712 domain
@@ -100,7 +107,7 @@ describe("EIP-2612 Comprehensive Testing", function () {
       await token.permit(owner.address, spender.address, PERMIT_AMOUNT, deadline, v, r, s);
 
       const finalNonce = await token.nonces(owner.address);
-      expect(finalNonce).to.equal(initialNonce.add(1));
+      expect(finalNonce).to.equal(initialNonce + 1n);
     });
 
     it("Should work with transferFrom after permit", async function () {
@@ -129,8 +136,8 @@ describe("EIP-2612 Comprehensive Testing", function () {
       await token.connect(spender).transferFrom(owner.address, recipient.address, PERMIT_AMOUNT);
 
       // Check final balances
-      expect(await token.balanceOf(owner.address)).to.equal(ownerInitialBalance.sub(PERMIT_AMOUNT));
-      expect(await token.balanceOf(recipient.address)).to.equal(recipientInitialBalance.add(PERMIT_AMOUNT));
+      expect(await token.balanceOf(owner.address)).to.equal(ownerInitialBalance - PERMIT_AMOUNT);
+      expect(await token.balanceOf(recipient.address)).to.equal(recipientInitialBalance + PERMIT_AMOUNT);
       expect(await token.allowance(owner.address, spender.address)).to.equal(0);
     });
   });
@@ -205,7 +212,7 @@ describe("EIP-2612 Comprehensive Testing", function () {
     it("Should fail with invalid nonce", async function () {
       const deadline = Math.floor(Date.now() / 1000) + 3600;
       const currentNonce = await token.nonces(owner.address);
-      const futureNonce = currentNonce.add(1); // Use future nonce
+      const futureNonce = currentNonce + 1n; // Use future nonce
 
       const value = {
         owner: owner.address,

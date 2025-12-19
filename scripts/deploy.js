@@ -12,17 +12,40 @@ async function main() {
   const balance = await provider.getBalance(deployer.address);
   console.log("Account balance:", ethers.formatEther(balance), "ETH");
 
-  // Configuration
+  // Configuration from environment variables
   const TOKEN_NAME = process.env.TOKEN_NAME || "GenericToken";
   const TOKEN_SYMBOL = process.env.TOKEN_SYMBOL || "MYGT";
-  const INITIAL_SUPPLY = process.env.INITIAL_SUPPLY
-    ? ethers.parseUnits(process.env.INITIAL_SUPPLY, 18)
-    : ethers.parseUnits("1000000", 18); // 1 million tokens default
+
+  // Token decimals (how many smallest units per token)
+  // 1 token = 10^decimals smallest units
+  // e.g., 18 means 1 token = 10^18 smallest units (standard)
+  // e.g., 6 means 1 token = 10^6 smallest units (like USDC/USDT)
+  const TOKEN_DECIMALS = process.env.TOKEN_DECIMALS
+    ? parseInt(process.env.TOKEN_DECIMALS, 10)
+    : 18;
+
+  // Initial supply in token units (will be converted to smallest units)
+  const INITIAL_SUPPLY_IN_TOKENS = process.env.INITIAL_SUPPLY
+    ? parseFloat(process.env.INITIAL_SUPPLY)
+    : 1000000; // 1 million tokens default
+
+  // Max supply in token units
+  const MAX_SUPPLY_IN_TOKENS = process.env.MAX_SUPPLY
+    ? parseFloat(process.env.MAX_SUPPLY)
+    : 18000000; // 18 million tokens default
+
+  // Daily mint limit in token units
+  const DAILY_MINT_LIMIT_IN_TOKENS = process.env.DAILY_MINT_LIMIT
+    ? parseFloat(process.env.DAILY_MINT_LIMIT)
+    : 1000000; // 1 million tokens default
 
   console.log("Token Configuration:");
   console.log("  Name:", TOKEN_NAME);
   console.log("  Symbol:", TOKEN_SYMBOL);
-  console.log("  Initial Supply:", ethers.formatUnits(INITIAL_SUPPLY, 18), "tokens");
+  console.log("  Decimals:", TOKEN_DECIMALS, "(1 token = 10^" + TOKEN_DECIMALS + " smallest units)");
+  console.log("  Initial Supply:", INITIAL_SUPPLY_IN_TOKENS, "tokens");
+  console.log("  Max Supply:", MAX_SUPPLY_IN_TOKENS, "tokens");
+  console.log("  Daily Mint Limit:", DAILY_MINT_LIMIT_IN_TOKENS, "tokens");
 
   try {
     // Deploy the token
@@ -31,7 +54,10 @@ async function main() {
     const token = await GenericToken.deploy(
       TOKEN_NAME,
       TOKEN_SYMBOL,
-      INITIAL_SUPPLY
+      TOKEN_DECIMALS,
+      ethers.parseUnits(INITIAL_SUPPLY_IN_TOKENS.toString(), TOKEN_DECIMALS),
+      ethers.parseUnits(MAX_SUPPLY_IN_TOKENS.toString(), TOKEN_DECIMALS),
+      ethers.parseUnits(DAILY_MINT_LIMIT_IN_TOKENS.toString(), TOKEN_DECIMALS)
     );
 
     console.log("⏳ Waiting for deployment confirmation...");
@@ -46,6 +72,7 @@ async function main() {
     console.log("\nVerifying deployment...");
     const name = await token.name();
     const symbol = await token.symbol();
+    const decimals = await token.decimals();
     const totalSupply = await token.totalSupply();
     const maxSupply = await token.maxSupply();
     const owner = await token.owner();
@@ -54,8 +81,9 @@ async function main() {
     console.log("Token Information:");
     console.log("  Name:", name);
     console.log("  Symbol:", symbol);
-    console.log("  Total Supply:", ethers.formatUnits(totalSupply, 18), "tokens");
-    console.log("  Max Supply:", ethers.formatUnits(maxSupply, 18), "tokens");
+    console.log("  Decimals:", decimals);
+    console.log("  Total Supply:", ethers.formatUnits(totalSupply, decimals), "tokens");
+    console.log("  Max Supply:", ethers.formatUnits(maxSupply, decimals), "tokens");
     console.log("  Owner:", owner);
     console.log("  Owner is Minter:", isOwnerMinter);
 
@@ -73,9 +101,10 @@ async function main() {
       deployerAddress: deployer.address,
       tokenName: name,
       tokenSymbol: symbol,
-      initialSupply: ethers.formatUnits(INITIAL_SUPPLY, 18),
-      totalSupply: ethers.formatUnits(totalSupply, 18),
-      maxSupply: ethers.formatUnits(maxSupply, 18),
+      decimals: decimals.toString(),
+      initialSupply: ethers.formatUnits(totalSupply, decimals),
+      totalSupply: ethers.formatUnits(totalSupply, decimals),
+      maxSupply: ethers.formatUnits(maxSupply, decimals),
       owner: owner,
       deploymentTransaction: deploymentTx.hash,
       deploymentBlock: deploymentReceipt.blockNumber,
@@ -92,7 +121,7 @@ async function main() {
     console.log(`NEXT_PUBLIC_TOKEN_ADDRESS=${await token.getAddress()}`);
     console.log(`NEXT_PUBLIC_TOKEN_NAME=${name}`);
     console.log(`NEXT_PUBLIC_TOKEN_SYMBOL=${symbol}`);
-    console.log(`NEXT_PUBLIC_TOKEN_DECIMALS=18`);
+    console.log(`NEXT_PUBLIC_TOKEN_DECIMALS=${decimals}`);
 
   } catch (error) {
     console.error("Deployment failed:", error);

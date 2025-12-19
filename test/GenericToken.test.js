@@ -12,10 +12,11 @@ describe("GenericToken", function () {
 
   const TOKEN_NAME = "GenericTestToken";
   const TOKEN_SYMBOL = "TEST";
-  const INITIAL_SUPPLY = ethers.parseUnits("1000000", 18);
-  const MINT_AMOUNT = ethers.parseUnits("1000", 18);
-  const MAX_SUPPLY = ethers.parseUnits("18000000", 18);
-  const DAILY_MINT_LIMIT = ethers.parseUnits("1000000", 18);
+  const TOKEN_DECIMALS = 18;
+  const INITIAL_SUPPLY = ethers.parseUnits("1000000", TOKEN_DECIMALS);
+  const MINT_AMOUNT = ethers.parseUnits("1000", TOKEN_DECIMALS);
+  const MAX_SUPPLY = ethers.parseUnits("18000000", TOKEN_DECIMALS);
+  const DAILY_MINT_LIMIT = ethers.parseUnits("1000000", TOKEN_DECIMALS);
 
   beforeEach(async function () {
     [owner, minter, user1, user2, ...addrs] = await ethers.getSigners();
@@ -24,7 +25,10 @@ describe("GenericToken", function () {
     token = await GenericToken.deploy(
       TOKEN_NAME,
       TOKEN_SYMBOL,
-      INITIAL_SUPPLY
+      TOKEN_DECIMALS,
+      INITIAL_SUPPLY,
+      MAX_SUPPLY,
+      DAILY_MINT_LIMIT
     );
   });
 
@@ -71,7 +75,7 @@ describe("GenericToken", function () {
 
       await expect(
         token.connect(user1).transfer(owner.address, MINT_AMOUNT)
-      ).to.be.revertedWith("ERC20: transfer amount exceeds balance");
+      ).to.be.revertedWithCustomError(token, "ERC20InsufficientBalance");
 
       expect(await token.balanceOf(owner.address)).to.equal(initialOwnerBalance);
     });
@@ -86,7 +90,7 @@ describe("GenericToken", function () {
 
       expect(user1Balance).to.equal(MINT_AMOUNT);
       expect(user2Balance).to.equal(MINT_AMOUNT);
-      expect(ownerBalance).to.equal(INITIAL_SUPPLY.sub(MINT_AMOUNT).sub(MINT_AMOUNT));
+      expect(ownerBalance).to.equal(INITIAL_SUPPLY - MINT_AMOUNT - MINT_AMOUNT);
     });
 
     it("Should handle approve and transferFrom", async function () {
@@ -213,7 +217,7 @@ describe("GenericToken", function () {
     });
 
     it("Should respect max supply limit", async function () {
-      const exceedingAmount = MAX_SUPPLY.sub(INITIAL_SUPPLY).add(1);
+      const exceedingAmount = MAX_SUPPLY - INITIAL_SUPPLY + 1n;
 
       await expect(
         token.connect(minter).mint(user1.address, exceedingAmount)
@@ -250,20 +254,22 @@ describe("GenericToken", function () {
 
     it("Should allow user to burn their own tokens", async function () {
       const initialBalance = await token.balanceOf(user1.address);
+      const burnAmount = MINT_AMOUNT / 2n;
 
-      await expect(token.connect(user1).burn(MINT_AMOUNT.div(2)))
+      await expect(token.connect(user1).burn(burnAmount))
         .to.not.be.reverted;
 
-      expect(await token.balanceOf(user1.address)).to.equal(initialBalance.sub(MINT_AMOUNT.div(2)));
+      expect(await token.balanceOf(user1.address)).to.equal(initialBalance - burnAmount);
     });
 
     it("Should allow burnFrom with approval", async function () {
-      await token.connect(user1).approve(owner.address, MINT_AMOUNT.div(2));
+      const burnAmount = MINT_AMOUNT / 2n;
+      await token.connect(user1).approve(owner.address, burnAmount);
 
-      await expect(token.burnFrom(user1.address, MINT_AMOUNT.div(2)))
+      await expect(token.burnFrom(user1.address, burnAmount))
         .to.not.be.reverted;
 
-      expect(await token.balanceOf(user1.address)).to.equal(MINT_AMOUNT.div(2));
+      expect(await token.balanceOf(user1.address)).to.equal(burnAmount);
     });
   });
 
@@ -337,7 +343,7 @@ describe("GenericToken", function () {
       await token.transfer(user1.address, MINT_AMOUNT);
 
       await expect(
-        token.connect(user1).transfer(user2.address, MINT_AMOUNT.div(2))
+        token.connect(user1).transfer(user2.address, MINT_AMOUNT / 2n)
       ).to.be.revertedWith("GenericToken: Caller is blacklisted");
     });
 
@@ -400,11 +406,12 @@ describe("GenericToken", function () {
       await token.transfer(user1.address, MINT_AMOUNT);
       await token.activateEmergencyMode();
 
-      await expect(token.emergencyTransfer(user1.address, user2.address, MINT_AMOUNT.div(2)))
+      const transferAmount = MINT_AMOUNT / 2n;
+      await expect(token.emergencyTransfer(user1.address, user2.address, transferAmount))
         .to.not.be.reverted;
 
-      expect(await token.balanceOf(user1.address)).to.equal(MINT_AMOUNT.div(2));
-      expect(await token.balanceOf(user2.address)).to.equal(MINT_AMOUNT.div(2));
+      expect(await token.balanceOf(user1.address)).to.equal(transferAmount);
+      expect(await token.balanceOf(user2.address)).to.equal(transferAmount);
     });
 
     it("Should fail emergency transfer when not in emergency mode", async function () {
@@ -472,7 +479,7 @@ describe("GenericToken", function () {
       await token.addMinter(minter.address);
       await token.connect(minter).mint(user1.address, MINT_AMOUNT);
 
-      expect(await token.remainingDailyLimit()).to.equal(DAILY_MINT_LIMIT.sub(MINT_AMOUNT));
+      expect(await token.remainingDailyLimit()).to.equal(DAILY_MINT_LIMIT - MINT_AMOUNT);
     });
   });
 

@@ -14,12 +14,15 @@ describe("EIP-3009", function () {
   let token, owner, user1, user2, others;
   const NAME = "GenericTestToken";
   const SYMBOL = "TEST";
-  const INITIAL = ethers.parseUnits("1000000", 18);
+  const TOKEN_DECIMALS = 18;
+  const INITIAL = ethers.parseUnits("1000000", TOKEN_DECIMALS);
+  const MAX_SUPPLY = ethers.parseUnits("18000000", TOKEN_DECIMALS);
+  const DAILY_MINT_LIMIT = ethers.parseUnits("1000000", TOKEN_DECIMALS);
 
   beforeEach(async () => {
     [owner, user1, user2, ...others] = await ethers.getSigners();
     const GenericToken = await ethers.getContractFactory("GenericToken");
-    token = await GenericToken.deploy(NAME, SYMBOL, INITIAL);
+    token = await GenericToken.deploy(NAME, SYMBOL, TOKEN_DECIMALS, INITIAL, MAX_SUPPLY, DAILY_MINT_LIMIT);
   });
 
   async function domain(verifyingContract) {
